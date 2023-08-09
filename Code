@@ -24,23 +24,21 @@ print("imports Complete")
 #%%
 ### Read datasets 
 
-CollegeTrain = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\CollegeCr.csv")
-CollegeTest = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\CollegeCr.test.csv")
-EdwardsTrain = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\Edwards.csv")
-EdwardsTest = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\Edwards.test.csv")
-OldTownTrain = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\OldTown.csv")
-OldTownTest = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\OldTown.test.csv")
+
+x
+x
+x
+x
+
 
 
 #%% split exterior column Data cleaning
 
 datasets = [
-    (CollegeTrain, r"C:\Users\Matth\OneDrive\Documents\stat580\CollegeCr.csv"),
-    (CollegeTest, r"C:\Users\Matth\OneDrive\Documents\stat580\CollegeCr.test.csv"),
-    (EdwardsTrain, r"C:\Users\Matth\OneDrive\Documents\stat580\Edwards.csv"),
-    (EdwardsTest, r"C:\Users\Matth\OneDrive\Documents\stat580\Edwards.test.csv"),
-    (OldTownTrain, r"C:\Users\Matth\OneDrive\Documents\stat580\OldTown.csv"),
-    (OldTownTest, r"C:\Users\Matth\OneDrive\Documents\stat580\OldTown.test.csv")
+    x
+x
+x
+x
 ]
 
 # Loop through the DataFrames
