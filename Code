@@ -1,0 +1,548 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Aug  8 15:15:28 2023
+
+@author: Matth
+"""
+import pandas as pd 
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import pearsonr
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+from sklearn.linear_model import Ridge
+from sklearn.linear_model import Lasso
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import GridSearchCV
+from sklearn.neural_network import MLPRegressor
+from sklearn.model_selection import cross_val_score
+from xgboost import XGBRegressor
+import numpy as np
+
+print("imports Complete")
+#%%
+### Read datasets 
+
+CollegeTrain = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\CollegeCr.csv")
+CollegeTest = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\CollegeCr.test.csv")
+EdwardsTrain = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\Edwards.csv")
+EdwardsTest = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\Edwards.test.csv")
+OldTownTrain = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\OldTown.csv")
+OldTownTest = pd.read_csv(r"C:\Users\Matth\OneDrive\Documents\stat580\OldTown.test.csv")
+
+
+#%% split exterior column Data cleaning
+
+datasets = [
+    (CollegeTrain, r"C:\Users\Matth\OneDrive\Documents\stat580\CollegeCr.csv"),
+    (CollegeTest, r"C:\Users\Matth\OneDrive\Documents\stat580\CollegeCr.test.csv"),
+    (EdwardsTrain, r"C:\Users\Matth\OneDrive\Documents\stat580\Edwards.csv"),
+    (EdwardsTest, r"C:\Users\Matth\OneDrive\Documents\stat580\Edwards.test.csv"),
+    (OldTownTrain, r"C:\Users\Matth\OneDrive\Documents\stat580\OldTown.csv"),
+    (OldTownTest, r"C:\Users\Matth\OneDrive\Documents\stat580\OldTown.test.csv")
+]
+
+# Loop through the DataFrames
+for df, file_path in datasets:
+    # Check if the 'LotInfo' column exists in the DataFrame
+    if 'LotInfo' in df.columns:
+        # Split the 'LotInfo' column
+        df[['LotShape', 'LotConfig', 'LotArea', 'LandSlope']] = df['LotInfo'].str.split(';', expand=True)
+       
+        # Drop the original 'LotInfo' column
+        df.drop('LotInfo', axis=1, inplace=True)
+    
+    # Split the 'Exterior' column
+    df[['ExteriorMaterial', 'ExteriorQuality', 'ExteriorCondition']] = df['Exterior'].str.split(';', expand=True)
+    
+    # Drop the original 'Exterior' column
+    df.drop('Exterior', axis=1, inplace=True)
+    
+    
+    # Fill all blanks with "NA" in the DataFrame
+    df.fillna("N/A", inplace=True)
+    
+    # Exclude 'id' column from duplicate checking
+    columns_to_check = [col for col in df.columns if col != 'id']
+  
+    # Identify duplicate rows (excluding 'id')
+    duplicate_rows = df[columns_to_check].duplicated(keep='first')
+  
+    # Drop duplicate rows (excluding 'id')
+    df.drop_duplicates(subset=columns_to_check, keep='first', inplace=True)
+    
+    # Drop rows where year bult > year sold
+    rows_to_drop = []
+
+    for index, row in df.iterrows():
+          if row['YearBuilt'] > row['YrSold']:
+               rows_to_drop.append(index)
+
+    # Drop rows based on the condition
+    df.drop(index=rows_to_drop, inplace=True)
+    
+    
+   
+    
+#%%
+# Define ordinal mappings
+ordinal_mappings = {
+   'ExteriorQuality': {'TA': 1, 'Gd': 2, 'Fa': 3},
+    'ExteriorCondition': {'TA': 1, 'Gd': 2, 'Fa': 3},
+    'LotConfig': {'Reg': 0, 'IR1': 1, 'IR2': 2},
+    'BsmtQual': {'NA': 0, 'TA': 1, 'Gd': 2, 'Fa': 3},
+    'KitchenQual': {'NA': 0, 'TA': 1, 'Gd': 2, 'Fa': 3},
+    'HouseStyle': {'1Story': 0, '1.5Story': 1, '2Story': 2},
+    'Electrical': {'SBrkr': 2, 'Fuse': 1, 'NA': 0},
+    'HeatingQC': {'Ex': 4, 'Gd': 3, 'TA': 2, 'Fa': 1, 'Po': 0},
+    'Foundation': {'PConc': 4, 'CBlock': 3, 'BrkTil': 2, 'Slab': 1, 'Stone': 0},
+    'RoofMatl': {'CompShg': 3, 'Tar&Grv': 2, 'WdShake': 1, 'WdShngl': 0},
+    'Utilities': {'AllPub': 2},
+    'Heating': {'GasA': 3, 'GasW': 2, 'Grav': 1, 'Wall': 0},
+    'PavedDrive': {'Y': 2, 'P': 1, 'N': 0},
+    'SaleType': {'New': 3, 'WD': 2, 'COD': 1, 'CWD': 1, 'Con': 0, 'ConLw': 0, 'ConLI': 0, 'ConLD': 0, 'Oth': 0},
+    'RoofStyle': {'Gable': 2, 'NotGable': 1},
+    'BldgType': {'1Fam': 1, '2fmCon': 2, 'Twnhs': 3, 'Duplex': 4},
+    'GarageType': {'N/A': 0, 'Detchd': 1, 'Attchd': 2},
+    'CentralAir': {'N': 0, 'Y': 1},
+    'BsmtCond': {'N/A': 0, 'TA': 1, 'Gd': 2},
+    'BsmtFinType1': {'GLQ': 6, 'ALQ': 5, 'BLQ': 4, 'Rec': 3, 'LwQ': 2, 'Unf': 1, 'N/A': 0},
+    'LotShape': {'Inside': 1, 'FR2': 2, 'Corner': 3, 'FR3': 4},
+    'ExteriorMaterial': {'OtherSd': 0, 'VinylSd': 1, 'MetalSd': 2}
+    }
+
+datasets = [CollegeTrain, EdwardsTrain, OldTownTrain]
+
+for dataset in datasets:
+    dataset.replace('NA', 0, inplace=True)
+
+# Apply ordinal mappings
+for dataset in datasets:
+    for column, mapping in ordinal_mappings.items():
+        dataset[column] = dataset[column].map(mapping).fillna(0)
+
+# Combine DataFrames
+combined_train = pd.concat(datasets, ignore_index=True)
+
+
+
+
+# Perform one-hot encoding on 'Neighborhood' column
+combined_train_encoded = pd.get_dummies(combined_train, columns=['Neighborhood'])
+
+# Convert boolean columns to int (False to 0, True to 1)
+boolean_columns = combined_train_encoded.select_dtypes(include=['bool']).columns
+combined_train_encoded[boolean_columns] = combined_train_encoded[boolean_columns].astype(int)
+
+# Replace 'NA' with 0 in the entire combined_train_encoded DataFrame
+combined_train_encoded.replace('NA', 0, inplace=True)
+
+# Display the encoded combined DataFrame
+print(combined_train_encoded)
+
+combined_train_encoded.fillna(0, inplace=True)
+##drop outliers
+combined_train_encoded = combined_train_encoded[combined_train_encoded['SalePrice'] <= 400000]
+
+# Print the shape of the DataFrame after dropping rows
+print(combined_train_encoded.shape)
+# Display the encoded combined DataFrame
+print(combined_train_encoded)
+
+
+
+#%% combine testing datasets  
+
+
+# Define ordinal mappings
+ordinal_mappings = {
+   'ExteriorQuality': {'TA': 1, 'Gd': 2, 'Fa': 3},
+    'ExteriorCondition': {'TA': 1, 'Gd': 2, 'Fa': 3},
+    'LotConfig': {'Reg': 0, 'IR1': 1, 'IR2': 2},
+    'BsmtQual': {'NA': 0, 'TA': 1, 'Gd': 2, 'Fa': 3},
+    'KitchenQual': {'NA': 0, 'TA': 1, 'Gd': 2, 'Fa': 3},
+    'HouseStyle': {'1Story': 0, '1.5Story': 1, '2Story': 2},
+    'Electrical': {'SBrkr': 2, 'Fuse': 1, 'NA': 0},
+    'HeatingQC': {'Ex': 4, 'Gd': 3, 'TA': 2, 'Fa': 1, 'Po': 0},
+    'Foundation': {'PConc': 4, 'CBlock': 3, 'BrkTil': 2, 'Slab': 1, 'Stone': 0},
+    'RoofMatl': {'CompShg': 3, 'Tar&Grv': 2, 'WdShake': 1, 'WdShngl': 0},
+    'Utilities': {'AllPub': 2, 'NoSewr': 1, 'NoSeWa': 1, 'ELO': 0},
+    'Heating': {'GasA': 3, 'GasW': 2, 'Grav': 1, 'Wall': 0},
+    'PavedDrive': {'Y': 2, 'P': 1, 'N': 0},
+    'SaleType': {'New': 3, 'WD': 2, 'COD': 1, 'CWD': 1, 'Con': 0, 'ConLw': 0, 'ConLI': 0, 'ConLD': 0, 'Oth': 0},
+    'RoofStyle': {'Gable': 2, 'NotGable': 1},
+    'BldgType': {'1Fam': 1, '2fmCon': 2, 'Twnhs': 3, 'Duplex': 4},
+    'GarageType': {'N/A': 0, 'Detchd': 1, 'Attchd': 2},
+    'CentralAir': {'N': 0, 'Y': 1},
+    'BsmtCond': {'N/A': 0, 'TA': 1, 'Gd': 2},
+    'BsmtFinType1': {'GLQ': 6, 'ALQ': 5, 'BLQ': 4, 'Rec': 3, 'LwQ': 2, 'Unf': 1, 'N/A': 0},
+    'LotShape': {'Inside': 1, 'FR2': 2, 'Corner': 3, 'FR3': 4},
+    'ExteriorMaterial': {'OtherSd': 0, 'VinylSd': 1, 'MetalSd': 2}
+    }
+
+datasets = [CollegeTest, EdwardsTest, OldTownTest]
+
+for dataset in datasets:
+    dataset.replace('NA', 0, inplace=True)
+
+# Apply ordinal mappings
+for dataset in datasets:
+    for column, mapping in ordinal_mappings.items():
+        dataset[column] = dataset[column].map(mapping).fillna(0)
+
+# Combine DataFrames
+combined_test = pd.concat(datasets, ignore_index=True)
+
+# Perform one-hot encoding on 'Neighborhood' column
+combined_test_encoded = pd.get_dummies(combined_test, columns=['Neighborhood'])
+
+# Convert boolean columns to int (False to 0, True to 1)
+boolean_columns = combined_test_encoded.select_dtypes(include=['bool']).columns
+combined_test_encoded[boolean_columns] = combined_test_encoded[boolean_columns].astype(int)
+
+# Replace 'NA' with 0 in the entire combined_test_encoded DataFrame
+combined_test_encoded.fillna(0, inplace=True)
+
+# Display the encoded combined DataFrame
+print(combined_test_encoded)
+
+#%% correlation
+
+
+
+
+# Plot OverallQual vs SalePrice
+plt.figure(figsize=(10, 6))
+plt.scatter(combined_train_encoded['OverallQual'], combined_train_encoded['SalePrice'], alpha=0.5)
+plt.title('Overall Quality vs Sale Price')
+plt.xlabel('Overall Quality')
+plt.ylabel('Sale Price')
+plt.grid(True)
+plt.show()
+
+
+# Drop the 'id' column
+combined_train_encoded_no_id = combined_train_encoded.drop(columns=['id'])
+
+# Calculate correlation matrix
+correlation_matrix = combined_train_encoded_no_id.corr()
+
+# Create a correlation heatmap
+plt.figure(figsize=(12, 10))
+sns.heatmap(correlation_matrix, cmap='coolwarm', annot=False)
+plt.title('Correlation Heatmap')
+plt.show()
+
+# Calculate the correlation between numeric features and SalePrice
+correlation = combined_train_encoded.drop(columns=['id']).corr()['SalePrice']
+
+# Create an empty DataFrame to store correlation coefficients and p-values
+correlation_results = pd.DataFrame(columns=['Feature', 'Correlation', 'P-value'])
+
+# Calculate correlation coefficients and p-values
+for feature in correlation.index:
+    corr_coeff, p_value = pearsonr(combined_train_encoded[feature], combined_train_encoded['SalePrice'])
+    correlation_results.loc[len(correlation_results)] = [feature, corr_coeff, p_value]
+
+# Sort by absolute correlation values in descending order
+correlation_results = correlation_results.sort_values(by='Correlation', key=lambda x: abs(x), ascending=False)
+
+# Display the correlation values and p-values
+print(correlation_results)
+
+#%% Drop columns from combined trained (less than 0.05 significance)
+
+# Columns to drop 
+columns_to_drop = ['SaleType', 'YrSold', 'LotShape', 'OverallCond', 'RoofStyle', 'Utilities']
+
+# Drop the specified columns
+combined_train_encoded.drop(columns=columns_to_drop, inplace=True)
+# Drop the specified columns
+combined_test_encoded.drop(columns=columns_to_drop, inplace=True)
+# Display the modified DataFrame
+print(combined_train_encoded)
+
+#%% fix non numerical errors
+combined_train_encoded['LotArea'] = pd.to_numeric(combined_train_encoded['LotArea'], errors='coerce')
+combined_train_encoded['LandSlope'] = pd.to_numeric(combined_train_encoded['LotArea'], errors='coerce')
+combined_test_encoded['LotArea'] = pd.to_numeric(combined_train_encoded['LotArea'], errors='coerce')
+combined_test_encoded['LandSlope'] = pd.to_numeric(combined_train_encoded['LotArea'], errors='coerce')
+#%% Linear Regression
+# Split the data into a pseudo training set and a test set (20%)
+pseudo_train, pseudo_test = train_test_split(combined_train_encoded, test_size=0.2, random_state=42)
+
+# Separate the target variable (SalePrice) from the features
+pseudo_train_features = pseudo_train.drop(columns=['SalePrice', 'id'])
+pseudo_train_target = pseudo_train['SalePrice']
+pseudo_test_features = pseudo_test.drop(columns=['SalePrice', 'id'])  # Exclude 'id' column
+pseudo_test_target = pseudo_test['SalePrice']
+pseudo_test_id = pseudo_test['id']
+# Create a Linear Regression model
+linear_model = LinearRegression()
+
+# Train the model on the pseudo training data
+linear_model.fit(pseudo_train_features, pseudo_train_target)
+
+# Make predictions on the pseudo test data
+pseudo_test_predictions = linear_model.predict(pseudo_test_features)
+
+# Create a DataFrame to display actual and predicted values
+prediction_linear = pd.DataFrame({
+    'id': pseudo_test_id,  # Add 'id' column
+    'Actual': pseudo_test_target,
+    'Predicted': pseudo_test_predictions
+})
+
+# Print the prediction results
+print(prediction_linear)
+
+# Calculate the Mean Squared Error (MSE) to evaluate the model's performance
+rmse1 = np.sqrt(mean_squared_error(pseudo_test_target, pseudo_test_predictions))
+
+print(f"Mean Squared Error: {rmse1}")
+
+
+
+#%% Ridge Regression
+# Split the data into a pseudo training set and a test set (20%)
+pseudo_train, pseudo_test = train_test_split(combined_train_encoded, test_size=0.2, random_state=42)
+
+# Separate the target variable (SalePrice) from the features
+pseudo_train_features = pseudo_train.drop(columns=['SalePrice', 'id'])
+pseudo_train_target = pseudo_train['SalePrice']
+pseudo_test_features = pseudo_test.drop(columns=['SalePrice', 'id'])  # Exclude 'id' column
+pseudo_test_target = pseudo_test['SalePrice']
+pseudo_test_id = pseudo_test['id']
+
+# Create a Ridge Regression model
+ridge_model = Ridge()
+
+# Define a grid of hyperparameters to search
+param_grid = {
+    'alpha': [0.1, 1, 10, 100],  # Adjust these values as needed
+    'solver': ['auto', 'svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga']
+}
+
+# Create a GridSearchCV object
+grid_search = GridSearchCV(ridge_model, param_grid, cv=5, scoring='neg_mean_squared_error')
+
+# Perform the grid search on the pseudo training data
+grid_search.fit(pseudo_train_features, pseudo_train_target)
+
+# Get the best estimator (model with best hyperparameters)
+best_ridge_model = grid_search.best_estimator_
+
+# Make predictions on the pseudo test data
+pseudo_test_predictions = best_ridge_model.predict(pseudo_test_features)
+
+# Create a DataFrame to display actual and predicted values
+prediction_ridge = pd.DataFrame({
+    'id': pseudo_test_id,  # Add 'id' column
+    'Actual': pseudo_test_target,
+    'Predicted': pseudo_test_predictions
+})
+
+# Print the prediction results
+print(prediction_ridge)
+
+# Calculate the Root Mean Squared Error (RMSE) to evaluate the model's performance
+rmseridge = np.sqrt(mean_squared_error(pseudo_test_target, pseudo_test_predictions))
+print(f"Root Mean Squared Error: {rmseridge}")
+
+
+#%% Lasso Regression
+
+
+# Split the data into a pseudo training set and a test set (20%)
+pseudo_train, pseudo_test = train_test_split(combined_train_encoded, test_size=0.2, random_state=42)
+
+# Separate the target variable (SalePrice) from the features
+pseudo_train_features = pseudo_train.drop(columns=['SalePrice', 'id'])
+pseudo_train_target = pseudo_train['SalePrice']
+pseudo_test_features = pseudo_test.drop(columns=['SalePrice', 'id'])  # Exclude 'id' column
+pseudo_test_target = pseudo_test['SalePrice']
+pseudo_test_id = pseudo_test['id']
+
+# Create a Lasso Regression model
+lasso_model = Lasso()
+
+# Define a grid of hyperparameters to search
+param_grid = {
+    'alpha': [0.1, 1, 10, 100]  # Adjust these values as needed
+}
+
+# Create a GridSearchCV object
+grid_search = GridSearchCV(lasso_model, param_grid, cv=5, scoring='neg_mean_squared_error')
+
+# Perform the grid search on the pseudo training data
+grid_search.fit(pseudo_train_features, pseudo_train_target)
+
+# Get the best estimator (model with best hyperparameters)
+best_lasso_model = grid_search.best_estimator_
+
+# Make predictions on the pseudo test data
+pseudo_test_predictions = best_lasso_model.predict(pseudo_test_features)
+
+# Create a DataFrame to display actual and predicted values
+prediction_lasso = pd.DataFrame({
+    'id': pseudo_test_id,  # Add 'id' column
+    'Actual': pseudo_test_target,
+    'Predicted': pseudo_test_predictions
+})
+
+# Print the prediction results
+print(prediction_lasso)
+
+# Calculate the Root Mean Squared Error (RMSE) to evaluate the model's performance
+rmse3 = np.sqrt(mean_squared_error(pseudo_test_target, pseudo_test_predictions))
+print(f"Root Mean Squared Error: {rmse3}")
+
+#%% Random forest
+
+# Split the data into a pseudo training set and a test set (20%)
+pseudo_train, pseudo_test = train_test_split(combined_train_encoded, test_size=0.2, random_state=42)
+
+# Separate the target variable (SalePrice) from the features
+pseudo_train_features = pseudo_train.drop(columns=['SalePrice', 'id'])
+pseudo_train_target = pseudo_train['SalePrice']
+pseudo_test_features = pseudo_test.drop(columns=['SalePrice', 'id'])  # Exclude 'id' column
+pseudo_test_target = pseudo_test['SalePrice']
+pseudo_test_id = pseudo_test['id']
+
+# Create a Random Forest Regression model
+random_forest_model = RandomForestRegressor(random_state=42)
+
+# Define hyperparameters and their possible values for Grid Search
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4]
+}
+
+# Create Grid Search object
+grid_search = GridSearchCV(estimator=random_forest_model, param_grid=param_grid, cv=3, scoring='neg_mean_squared_error')
+
+# Fit the Grid Search on the training data
+grid_search.fit(pseudo_train_features, pseudo_train_target)
+
+# Get the best hyperparameters from the Grid Search
+best_params = grid_search.best_params_
+
+# Create a Random Forest model with the best hyperparameters
+best_random_forest_model = RandomForestRegressor(**best_params, random_state=42)
+
+# Train the model on the pseudo training data
+best_random_forest_model.fit(pseudo_train_features, pseudo_train_target)
+
+# Make predictions on the pseudo test data
+pseudo_test_predictions = best_random_forest_model.predict(pseudo_test_features)
+
+# Calculate the Root Mean Squared Error (RMSE) to evaluate the model's performance
+rmse_rf_tuned = np.sqrt(mean_squared_error(pseudo_test_target, pseudo_test_predictions))
+
+# Print the prediction results and RMSE
+print("Best Hyperparameters:", best_params)
+print(f"Root Mean Squared Error (Tuned Random Forest): {rmse_rf_tuned}")
+
+#%% XGBoost
+from xgboost import XGBRegressor
+
+# Split the data into a pseudo training set and a test set (20%)
+pseudo_train, pseudo_test = train_test_split(combined_train_encoded, test_size=0.2, random_state=42)
+
+# Separate the target variable (SalePrice) from the features
+pseudo_train_features = pseudo_train.drop(columns=['SalePrice', 'id'])
+pseudo_train_target = pseudo_train['SalePrice']
+pseudo_test_features = pseudo_test.drop(columns=['SalePrice', 'id'])  # Exclude 'id' column
+pseudo_test_target = pseudo_test['SalePrice']
+pseudo_test_id = pseudo_test['id']
+
+
+# Create an XGBoost Regression model
+xgb_model = XGBRegressor(random_state=42)
+
+# Define hyperparameters and their possible values for Grid Search
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_depth': [3, 5, 7],
+    'learning_rate': [0.01, 0.1, 0.2]
+}
+
+# Create Grid Search object
+grid_search = GridSearchCV(estimator=xgb_model, param_grid=param_grid, cv=3, scoring='neg_mean_squared_error')
+
+# Fit the Grid Search on the training data
+grid_search.fit(pseudo_train_features, pseudo_train_target)
+
+# Get the best hyperparameters from the Grid Search
+best_params = grid_search.best_params_
+
+# Create an XGBoost model with the best hyperparameters
+best_xgb_model = XGBRegressor(**best_params, random_state=42)
+
+# Train the model on the pseudo training data
+best_xgb_model.fit(pseudo_train_features, pseudo_train_target)
+
+# Make predictions on the pseudo test data
+pseudo_test_predictions = best_xgb_model.predict(pseudo_test_features)
+
+# Calculate the Root Mean Squared Error (RMSE) to evaluate the model's performance
+rmse_xgb_tuned = np.sqrt(mean_squared_error(pseudo_test_target, pseudo_test_predictions))
+
+# Print the prediction results and RMSE
+print("Best Hyperparameters:", best_params)
+print(f"Root Mean Squared Error (Tuned XGBoost): {rmse_xgb_tuned}")
+
+
+#%% K fold Cross Validation
+
+# List of previously tuned models
+tuned_models = [
+    linear_model,
+    best_ridge_model,
+    best_lasso_model,
+    best_random_forest_model,
+    best_xgb_model,
+]
+
+
+# Combine tuned models and additional models
+models = tuned_models 
+# Split the data into features and target
+X = combined_train_encoded.drop(columns=['SalePrice', 'id'])
+y = combined_train_encoded['SalePrice']
+
+# Perform k-fold cross-validation for each model
+for model in models:
+    scores = cross_val_score(model, X, y, cv=5, scoring='neg_mean_squared_error')
+    rmse_scores = np.sqrt(-scores)  # Convert negative MSE scores to RMSE scores
+    avg_rmse = np.mean(rmse_scores)
+    
+    print(f"{type(model).__name__} - Avg RMSE: {avg_rmse:.4f}")
+    
+    
+#%% Apply random forest to the housing set    
+
+
+# Load and preprocess the test dataset (combined_test_encoded)
+# ... (your code to load and preprocess the test dataset) ...
+
+# Extract features from the test dataset
+test_features = combined_test_encoded.drop(columns=['uniqueID'])
+
+# Use the tuned Random Forest model to make predictions
+test_predictions = best_random_forest_model.predict(test_features)
+
+# Create a DataFrame to store the results
+results = pd.DataFrame({
+    'uniqueID': combined_test_encoded['uniqueID'],
+    'Predicted_SalePrice': test_predictions
+})
+
+print(results)
+
+#%% Save CSV
+# Save the results to a CSV file
+results.to_csv('predicted_sale_prices.csv', index=False)
